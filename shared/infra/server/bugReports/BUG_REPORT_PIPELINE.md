@@ -21,45 +21,46 @@ The Tally webhook is push-based. Tally sends a request immediately when a user s
 
 Create or select the KanaDojo Supabase project.
 
-Create a private Storage bucket:
+The Supabase CLI is installed locally with Scoop. If a new shell does not find `supabase`, use the shim directly:
 
-```txt
-bug-report-attachments
+```powershell
+$env:USERPROFILE\scoop\shims\supabase.exe --version
 ```
 
-Run this SQL:
+The repo has already been initialized with Supabase CLI config and a migration:
 
-```sql
-create table bug_reports (
-  id uuid primary key default gen_random_uuid(),
-  source text not null default 'tally',
-  source_submission_id text unique,
-  status text not null default 'received',
-  raw_payload jsonb not null,
-  normalized_payload jsonb,
-  cleaned_payload jsonb,
-  title text,
-  description text,
-  severity text,
-  labels text[] not null default '{}',
-  github_issue_number integer,
-  github_issue_url text,
-  attempts integer not null default 0,
-  last_error text,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
+```txt
+supabase/config.toml
+supabase/migrations/20260618190346_bug_report_pipeline.sql
+```
 
-create table bug_report_attachments (
-  id uuid primary key default gen_random_uuid(),
-  bug_report_id uuid not null references bug_reports(id) on delete cascade,
-  original_url text,
-  original_name text,
-  storage_path text not null,
-  mime_type text,
-  size_bytes integer,
-  created_at timestamptz not null default now()
-);
+That migration creates:
+
+- `public.bug_reports`
+- `public.bug_report_attachments`
+- RLS-enabled private tables
+- helpful processing indexes
+- `updated_at` trigger
+- private Storage bucket `bug-report-attachments`
+
+Manual actions still required:
+
+1. Log in to Supabase:
+
+```powershell
+supabase login
+```
+
+2. Link this repo to the Supabase project:
+
+```powershell
+supabase link --project-ref <your-project-ref>
+```
+
+3. Push the migration to the linked remote project:
+
+```powershell
+supabase db push
 ```
 
 Keep the tables and bucket private for v1. The server uses `SUPABASE_SERVICE_ROLE_KEY`; do not expose it to client code.
@@ -129,6 +130,19 @@ Authorization: Bearer <TALLY_WEBHOOK_TOKEN>
 5. Add the signing secret matching `TALLY_WEBHOOK_SECRET`.
 6. Submit one test report without an attachment.
 7. Submit one test report with a screenshot.
+
+## What Still Requires Manual Account Work
+
+These steps cannot be completed from this terminal without account-specific secrets or browser authorization:
+
+- `supabase login`: opens/authenticates against your Supabase account.
+- `supabase link --project-ref <your-project-ref>`: requires the exact Supabase project ref.
+- Vercel env vars: require the actual secret values.
+- GitHub PAT: must be created in GitHub with your account permissions.
+- DeepSeek API key: must be created in the DeepSeek dashboard.
+- Tally webhook: must be configured inside the Tally form dashboard.
+
+Everything that can be made repeatable in this repo has been moved into `supabase/migrations/20260618190346_bug_report_pipeline.sql`.
 
 ## Module Responsibilities
 
@@ -260,8 +274,13 @@ The source section includes the Supabase report ID and Tally submission ID so ma
 
 ## Rollout Checklist
 
-- [ ] Create Supabase tables.
-- [ ] Create private Supabase Storage bucket.
+- [x] Install Scoop.
+- [x] Install Supabase CLI.
+- [x] Initialize Supabase config in this repo.
+- [x] Create the bug report pipeline migration.
+- [ ] Run `supabase login`.
+- [ ] Run `supabase link --project-ref <your-project-ref>`.
+- [ ] Run `supabase db push`.
 - [ ] Add Vercel env vars.
 - [ ] Deploy to Preview.
 - [ ] Temporarily point Tally webhook at Preview if desired.
